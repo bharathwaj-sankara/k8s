@@ -16,7 +16,7 @@ https://`{{ registry }}`/v2/`{{ repo-name }}`/tags/list
 ### Build Argento
 
 ```
-make build -j5 CLUSTER=bh-abs-metric1 K8S_CLUSTER=dev TO_CISCO=true
+make build -j5 K8S_CLUSTER=dev TO_CISCO=true
 ```
 
 ### Deploy Argento
