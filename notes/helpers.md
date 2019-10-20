@@ -5,11 +5,11 @@
 
 ### List all repos in registry
 
-https://{{ registry }}/v2/_catalog
+https://`{{ registry }}`/v2/_catalog
 
 ### List all tags for an image
 
-https://{{ registry }}/v2/{{ repo-name }}/tags/list
+https://`{{ registry }}`/v2/`{{ repo-name }}`/tags/list
 
 ## Argento Build Helpers
 
