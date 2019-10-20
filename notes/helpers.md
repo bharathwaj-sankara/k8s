@@ -22,7 +22,13 @@ make build -j5 CLUSTER=bh-abs-metric1 K8S_CLUSTER=dev TO_CISCO=true
 ### Deploy Argento
 
 ```
+make deploy TAG=wsankara.1571531322 -j5 CLUSTER=bh-abs-metric1 K8S_CLUSTER=dev TO_CISCO=1
+```
 
+### Delete Argento App
+
+```
+make purge  CLUSTER=bh-abs-metric1 K8S_CLUSTER=dev
 ```
 
 ### Delete Helm chart for prometheus-operator:
