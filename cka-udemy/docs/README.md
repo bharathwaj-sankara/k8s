@@ -149,3 +149,99 @@ kube-proxy is a process run on each node and looks for new services and everytim
 and provide the routing the backend pods whenever a request to the service is made. It does this using iptable rules. 
 
 Using kubeadm deploy kube-proxy as deamon-set on each node.
+
+
+### Pods-YAML
+
+ALl YAML has 4 basic fields: `apiVersion`, `kind`, `metadata`, `spec`.
+
+Here is an example:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    type: app
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+```
+
+### Replication Controller
+
+`NOTE:` Replication Controller is the old technology and is replaced by replica sets. Replication Controller is deprecated
+
+Replicaset Template:
+
+
+api version is `apps/v1`
+`selector` is the main difference between replication controller and replica set. It is a mandatory property for replicaset.
+```
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: nginx-rc
+  labels:
+    type: app
+spec:
+  template:
+    metadata:
+    name: nginx
+    labels:
+        type: app
+    spec:
+    containers:
+        - name: nginx
+        image: nginx
+  replicas: 3  
+  selector:
+    matchLabels:
+      type: app
+```
+
+To change replica set:
+
+1. Change the replicas in the file and run:
+```
+kubectl replace -f replicaset-definition.yml
+```
+
+or
+
+```
+kubectl apply -f replicaset-definition.yml
+```
+
+2. Change the replicas in command line
+
+```
+kubectl scale -replicas=6 -f replicaset-definition.yaml
+```
+
+or
+
+```
+kubectl scale --replicas=6 replicaset nginx-rc
+```
+
+
+
+### Difference between kubectl create/replace and kubectl apply
+
+From https://stackoverflow.com/questions/47369351/kubectl-apply-vs-kubectl-create
+
+```
+Those are two different approaches. kubectl create is what we call Imperative Management. On this approach you tell the Kubernetes API what you want to create, replace or delete, not how you want your K8s cluster world to look like.
+
+kubectl apply is part of the Declarative Management approach, where changes that you may have applied to a live object (i.e. through scale) are maintained even if you apply other changes to the object.
+
+You can read more about imperative and declarative management in the Kubernetes Object Management documentation.
+```
+
+They do different things. kubectl create will throw an error if the resource already exists. kubectl apply won't. The difference is that kubectl create specifically says "create this thing" whereas kubectl apply says "do whatever is necessary (create, update, etc) to make it look like this"
+
+https://stackoverflow.com/questions/47241626/what-is-the-difference-between-kubectl-apply-and-kubectl-replace
+
