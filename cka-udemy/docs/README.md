@@ -596,3 +596,8 @@ error: name cannot be provided when a selector is specified
 kubectl get all --selector env=prod,bu=finance,tier=frontend
 ```
 
+We can also filter using `-l` option as in:
+
+```
+kubectl get all -l env=prod,bu=finance,tier=frontend
+```
