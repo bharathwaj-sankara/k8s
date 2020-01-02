@@ -500,3 +500,99 @@ If note port is not specified then it is randonmly choosen among available ports
 
 
 ## Scheduling
+
+### Manual Scheduling
+K8s scheduler looks at all pods without a node and assigns a node to a pod only when it does not have one.
+If scheduler is not running in k8s, then all the pods will be in pending state. To schedule a pod manually
+without scheduler, use `nodeName` attribute. Ex:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    type: app
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+  nodeName: node01
+```
+
+Manually specifying `nodeName` in spec file takes effect only in pod creation time.
+
+In case the pod is already in `Pending` state, setting nodeName will not work. In that case we need to create
+a binding object and POST to k8s api server.
+
+Example:
+
+```
+apiVersion: v1
+kind: Binding
+metadata:
+  name: nginx
+target:
+  apiVersion: v1
+  kind: Node
+  name: node02
+```
+
+Convert this yaml to json and do:
+
+```
+curl --header "Content-Type:application/json" --request POST --data '{"apiVersion": "v1", ...}' http://$SERVER/api/v1/namespaces/default/pods/$PODNAME/binding/
+```
+
+### Selector and Labels
+
+Add labels for a pod so that pods can be grouped based on need.
+
+to select a certain pods:
+
+```
+kubectl get pods --selector app=App1
+```
+
+selectors are also used to connect features in k8s.
+
+```
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: nginx-rc
+  labels:     ### ---> This is the label of the replicaset itself, 
+              ##       in case we want to select this replicaset elsewhere.
+    type: app
+spec:
+  template:
+    metadata:
+        name: nginx
+        labels:          ### ---> This is the label of the pod itself.
+            type: app    ###      "pod label"
+    spec:
+        containers:
+            - name: nginx
+            image: nginx
+  replicas: 3  
+  selector:
+    matchLabels:         ### ---> This is the selector label - which has to match
+      type: app          ###      the pod label.
+```
+
+Also annotations can be added to the spec file for documentation purposes which can also be used for some integration later.
+
+From practice test:
+
+```
+# To select all pods in default namespace with env prod
+kubectl get all --selector env=prod
+
+# If this is used to filter pods in env=prod finance bu and frontend tier, will throw an error 
+kubectl  get pod --selector env=prod bu=finance tier=frontend
+error: name cannot be provided when a selector is specified
+
+# Right way is:
+kubectl get all --selector env=prod,bu=finance,tier=frontend
+```
+
