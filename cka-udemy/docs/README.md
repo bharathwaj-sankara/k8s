@@ -313,7 +313,7 @@ kubectl run --generator=run-pod/v1 nginx --image=nginx --dry-run -o yaml
 
 (a) with run - deprecated
 ```
-kubectl run --generator=deployment/v1beta1 nginx --image=nginx [--dry-run -o yaml]
+kubectl run --generator=deployment/v1beta1 nginx --image=nginx [--replicas=6 --dry-run -o yaml]
 ```
 
 Or recommended
@@ -601,3 +601,274 @@ We can also filter using `-l` option as in:
 ```
 kubectl get all -l env=prod,bu=finance,tier=frontend
 ```
+
+### Taints and Tolerations
+Taints/Tolerations can be set to restrict what pods can be placed on what nodes.
+
+Taints are attributes added to the node and only nodes with the toleration to the taint can 
+be placed on that node.
+
+To restrict pod placement on a node:
+
+1. Add a taint on the node.
+2. By default pods have no toleration for the taint, so nothing can be placed on it.
+3. Then add a toleration to the pod.
+
+#### Tainting node:
+
+```
+kubectl taint nodes node-name key=value:taint-effect
+```
+
+1. `node-name` is the name of the node
+2. `key=value` is the taint KV
+3. `taint-effect`: what happens to the pod that do not tolerate the taint. There are 3 values for this:
+NoSchedule|PreferNoScheduler|NoExecute.
+
+Example:
+
+```
+kubectl taint nodes node1 app=blue:NoSchedule
+```
+
+To remove a taint:
+
+```
+kubectl taint nodes master node-role.kubernetes.io/master:NoSchedule-
+```
+
+#### Tolerations
+Add `tolerations` to the pod spec file
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    type: app
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+  tolerations:
+    - key: "app"
+      operator: "Equal"
+      value: "blue"
+      effect: "NoSchedule"
+```
+
+A taint is automatically set on the master node, so no application pod can be scheduled on the master node.
+To see the masterNode taint:
+
+```
+kubectl describe node kubemaster | grep Taint
+```
+
+### Node Selection/Affinity
+Taint/Toleration prevents unwanted pods from being scheduled on a node, but does NOT guarantee placement of 
+certain pods on specific nodes.
+
+There are two ways to do this:
+
+#### Node Selector
+
+1. Label the node with some kv
+
+```
+kubectl label nodes <node-name> <label-key>=<label:value>
+```
+
+Ex:
+
+```
+kubectl label nodes node1 size=large
+```
+
+
+2. In the pod definition add a `nodeSelector` property.
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    type: app
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+  nodeSelector:
+    size: large
+```
+
+Cannot achieve more complex placement like do not place on small nodes or place on large or medium nodes.
+
+#### Node Affinity
+Ensures pods are scheduled on particular nodes.
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    type: app
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: size
+            operator: In
+            values:
+            - Large 
+            - Merge
+```
+
+operator can be `In|NotIn|Exists`.
+
+If nodeAffinity cannot be met, it is handled by the type of nodeAffinity - `requiredDuringSchedulingIgnoredDuringExecution`.
+Two types right:
+
+1. `requiredDuringSchedulingIgnoredDuringExecution`
+2. `preferedDuringSchedulingIgnoredDuringExecution`
+
+There is plan for `requiredDuringSchedulingRequiredDuringExecution` in the future.
+
+#### Labs
+To add a label to a node:
+
+```
+kubectl label node node01 color=blue
+```
+
+### Resource Limits & Requirements
+
+#### Requests
+
+Default resource request is 0.5 CPU and 256MiB Memory.
+
+1 count of CPU is 1vcpu (1 AWS vCPU, 1 Azure core, 1 GCP core == 1 hyperthread).
+0.1 CPU is also called 100Mili. We can go as low as 1Mili. 
+
+#### Limits
+Default limits is 1 vCPU and 512MiB.
+
+
+To change requests and lmits:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+  labels:
+    type: app
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+  resources:
+    requests:
+      cpu: 1
+      memory: "1Gi"
+    limits:
+      cpu: 2
+      memory: "2Gi"
+    
+```
+
+
+### Editing PODs and Deployments
+
+#### Edit a POD
+Remember, you CANNOT edit specifications of an existing POD other than the below.
+
+1. spec.containers[*].image
+2. spec.initContainers[*].image
+3. spec.activeDeadlineSeconds
+4. spec.tolerations
+
+For example you cannot edit the environment variables, service accounts, resource limits (all of which we will discuss later) of a running pod. But if you really want to, you have 2 options:
+
+1. Run the kubectl edit pod <pod name> command.  This will open the pod specification in an editor (vi editor). Then edit the required properties. When you try to save it, you will be denied. This is because you are attempting to edit a field on the pod that is not editable.
+
+
+
+A copy of the file with your changes is saved in a temporary location as shown above.
+
+You can then delete the existing pod by running the command:
+
+```kubectl delete pod webapp```
+
+
+
+Then create a new pod with your changes using the temporary file
+
+``` kubectl create -f /tmp/kubectl-edit-ccvrq.yaml ```
+
+
+
+2. The second option is to extract the pod definition in YAML format to a file using the command
+
+```kubectl get pod webapp -o yaml > my-new-pod.yaml```
+
+Then make the changes to the exported file using an editor (vi editor). Save the changes
+
+vi my-new-pod.yaml
+
+Then delete the existing pod
+
+``` kubectl delete pod webapp ```
+
+Then create a new pod with the edited file
+
+``` kubectl create -f my-new-pod.yaml ```
+
+
+
+#### Edit Deployments
+With Deployments you can easily edit any field/property of the POD template. Since the pod template is a child of the deployment specification,  with every change the deployment will automatically delete and create a new pod with the new changes. So if you are asked to edit a property of a POD part of a deployment you may do that simply by running the command
+
+```kubectl edit deployment my-deployment```
+
+
+### Daemon Sets
+
+DaemonSets runs a pod (only one instance) in each of the nodes. When the node joins the cluster the daemon sets runs on it and when it leaves it gets deleted.
+DaemonSets are useful for monitoring/logging type pods. kube-proxy runs as daemon set too.
+
+To create a daemonset.
+
+```
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nginx-rc
+  labels:
+    type: app
+spec:
+  template:
+    metadata:
+        name: nginx
+        labels:
+            type: app
+    spec:
+        containers:
+          - name: nginx
+            image: nginx
+
+  selector:
+    matchLabels:
+      type: app
+```
+
+No replicas allowed in daemonsets.
+Until k8s v1.12 daemon sets were implemented with nodeName for each pod but after that it is using nodeAffinity.
+
