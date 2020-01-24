@@ -872,3 +872,32 @@ spec:
 No replicas allowed in daemonsets.
 Until k8s v1.12 daemon sets were implemented with nodeName for each pod but after that it is using nodeAffinity.
 
+### Static Pods
+
+`kubelet` can manage the node indepedently without `kube-apiserver` or `scheduler`. Usually the `kube-apiserver` will co-ordinate bringing up new instances with the help of scheduler. But if there is no master node, we can schedule pods using static pods.
+
+A pod-config directory can be designated in the worker node. Kube-let will periodically look for changes in this directory and when there is a change will bringup the pods. It will monitor for new files and will also montior changes in existing files and apply them as needed. Only pod definition files can be placed in this directory and not replicaSet or deployments.
+
+The configuration path can be any directory on the host and it needs to be passed as command line arg for kubelet using `--pod-manifest-path` option. 
+
+Another way is to provide a config option `--config=kubeletconfig.yaml`, and in that path provide the 
+config path as :
+
+```
+staticPodPath: /a/b/c/d/
+```
+
+To check if the static pods running, use `docker ps` .
+If kube api server is running, kubelet would automatically update kube api server. WIth this we can check if the pod is running using kubectl command, but that's all we can do. To delete the pod, we have to remove the config file from the directory.
+
+
+#### Use cases for Static Pod
+kubeadmin tool will use this to setup all the master components like controller, apiserver, etcd etc. We install kubelet on the master node and place these files in the pod-manifest-path. Since these are static pods, even if they crash for any reason kubelet will relaunch them.
+
+#### Difference between static PODs and DaemonSets
+
+|:Static PODs:|:DaemonSets:|
+|-------------|------------|
+|:Created by Kubectl|:Created by Kube-API server (DaemonSet Controller)|
+|:Deploy Control Plane componets as static pods|:Deploy Monitoring Agents, Logging Agents on nodes|
+| Ignored by the Kube-Scheduler |
