@@ -891,6 +891,14 @@ To check if the static pods running, use `docker ps` .
 If kube api server is running, kubelet would automatically update kube api server. WIth this we can check if the pod is running using kubectl command, but that's all we can do. To delete the pod, we have to remove the config file from the directory.
 
 
+To find all the static pods in the system:
+
+```
+kubectl get pods --all-namespaces
+```
+
+And all the pods that has `-master` or `-nodename` at the end are all static pods.
+
 #### Use cases for Static Pod
 kubeadmin tool will use this to setup all the master components like controller, apiserver, etcd etc. We install kubelet on the master node and place these files in the pod-manifest-path. Since these are static pods, even if they crash for any reason kubelet will relaunch them.
 
@@ -901,3 +909,379 @@ kubeadmin tool will use this to setup all the master components like controller,
 |:Created by Kubectl|:Created by Kube-API server (DaemonSet Controller)|
 |:Deploy Control Plane componets as static pods|:Deploy Monitoring Agents, Logging Agents on nodes|
 | Ignored by the Kube-Scheduler |
+|-------------------------------|
+
+### Multiple Scheduler
+Kubernetes allows using multiple scheduler at the same time. We can specify per-pod definition what scheduler should it use to schedule.
+
+When kube-scheduler service is started, there is an option of passing a scheduler name, `--scheduler-name=default-scheduler`. If the option is not specified `default-scheduler` is used. For custom schedulers, add a `--scheduler-name=mycustom-scheduler`. `--leader-elect` option is passed to kube-scheduler command to pick a leader in H/A scenario.
+
+To use the new scheduler, add a new field called:
+
+```
+containers:
+  - image: nginx
+    name: nginx
+  schedulerName: my-custom-scheduler
+```
+
+To see which scheduler created the pod:
+
+```
+kubectl get events
+```
+
+## Logging/Monitor
+
+To get the resource usage in kubernetes use:
+
+```
+kubectl top node
+```
+
+To get the resource usage in pods:
+
+```
+kubectl top pod
+```
+
+To monitor a pod:
+
+```
+kubectl logs -f event-simulator-pod
+```
+
+`-f` : live updates (like tail -f)
+
+If there are multiple container in the pod, specify the name of the container:
+
+```
+kubectl logs -f event-simulator-pod container1
+```
+
+## App-Lifecycle Management
+
+To check the rollout status of a deployment:
+
+```
+kubectl rollout status deployment/<name-of-deployment>
+```
+
+This will tell you the current status of a deployment.
+
+To get the history of the rollout:
+
+```
+kubectl rollout history deployment/<name-of-deployment>
+```
+
+#### Upgrade Strategy:
+
+1. Recreate: Deletes all the old pods and creates new ones. This strategy can create downtime between the old pods going down and new ones coming up.
+
+2. Rolling Update: Will take down old pod one at a time and then create a new one. 
+
+Default is Rolling Update.
+
+To upgrade:
+
+1. Make changes to the deployment file and run:
+
+```
+kubectl apply -f deployment-definiition.yaml
+```
+
+2. Another hack is to change the image of the container:
+(Hack) - DO NOT USE THIS FOR PRODUCTION as file and cluster can go out of sync and creates snowflakes.
+
+```
+kubectl set image deployment/myapp-deployment nginx=nginx:1.9.1
+```
+
+To check what strategy an upgrade used, look at the describe commang on the deployment. 
+It will show how the application was scaled down and up. Recreate will scale down all at once and then up after that, rolling will do few at a time.
+
+K8s does upgrades by creating a new replicaset and scales down old replicaset and scales up new replicaset.
+
+In case the upgrade has issues and has to be rolled back we can do this by:
+
+```
+kubectl rollout undo deployment/myapp-deployment
+```
+
+This will scale down all the pods to 0 in the new deployment and scale up the old deployment to its desired count.
+
+```
+kubectl get replicasets
+``` 
+
+will help in handling this.
+
+For instance kubectl run command can create a deployment:
+
+```
+kubectl run nginx --image=nginx
+```
+
+You can also control rolling update with `strategy` key:
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  creationTimestamp: "2020-01-26T00:31:05Z"
+  generation: 1
+  name: frontend
+  namespace: default
+  resourceVersion: "724"
+  selfLink: /apis/apps/v1/namespaces/default/deployments/frontend
+  uid: 69739c0b-db5c-4618-92dd-035c51ebadd8
+spec:
+  minReadySeconds: 20
+  progressDeadlineSeconds: 600
+  replicas: 4
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      name: webapp
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        name: webapp
+```        
+
+### Command and Arguments 
+Dockerfile has two params:
+1. ENTRYPOINT - defines what's the command to run 
+2. CMD - the arguments to the entry point
+
+eg:
+
+ENTRYPOINT ["sleep"]
+CMD ["5"]
+
+To change this in command line when running the container:
+
+```
+docker run  --name mycontainer --entrypoint sleep2.0 mycontainer 10
+```
+
+will use sleep2.0 and sleep for 10.
+
+In the kubernetes world to change this, we need to update the pod definition file:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mycontainer
+  labels:
+    type: app
+spec:
+  containers:
+    - name: mycontainer
+      image: mycontainer
+      command: ["sleep2.0"]
+      args: ["10"]
+```
+
+### ENV variables in Kubernetes
+
+Use `env` attribute. It's an array and each entry is a key-value pair like:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mycontainer
+  labels:
+    type: app
+spec:
+  containers:
+    - name: mycontainer
+      image: mycontainer
+      env:
+        - name: APP_COL
+          value: pink
+```
+
+### ConfigMaps
+
+There are 2 phases to set up config maps:
+
+1. Create the config map
+
+(a) using the imperative definition (without a file):
+
+```
+kubectl create configmap app-config --from-literal=APP_COLOR=blue \
+  --from-literal=APP_MOD=prod
+```
+
+`--from-literal` makes it a kv file.
+
+(b) declarative using file
+
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-Config
+data:
+  APP_COLOR: blue
+  APP_MODE=prod
+```
+
+And to create it :
+
+```
+kubectl create -f <file-name>
+```
+
+To view all the config maps:
+
+```
+kubectl get configmaps
+```
+
+and to view it's data:
+
+```
+kubectl describe configmaps
+```
+
+2. Inject to a POD
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mycontainer
+  labels:
+    type: app
+spec:
+  containers:
+    - name: mycontainer
+      image: mycontainer
+      envFrom:
+        - configMapRef:
+            name: app-config
+```
+
+We can also specify a single key from config map:
+
+```
+spec:
+  containers:
+    - name: mycontainer
+      image: mycontainer
+      env:
+        - name: APP_COLOR
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: APP_COLOR
+```
+
+Or we can import this as a volume:
+
+```
+volumes:
+- name: app-config-volume
+  configMap:
+    name: app-config
+```
+
+### Secrets
+
+Secrets keep the kv as a hash - a bit more secure than configMap.
+
+Secrets needs to steps:
+
+1. Create a secret:
+
+a. Imperative Approach:
+
+```
+kubectl create secret generic app-secret --from-literal=DB_Host=mysql --from-literal=DB_Password=passwrd
+```
+
+or Put all the values in a file - and use that:
+
+```
+kubectl create secret generic app-secret --from-file=app-secret.properties
+```
+
+b. Declarative approach
+
+```
+kubectl create -f secret-data.yaml
+```
+
+secret-data.yaml
+
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  DB_Host: mysql
+  DB_Password: paswrd
+```
+
+However the values have to base64 encoded. to Do that:
+
+`echo -n 'mysql' | base64` will give the base64 version of the host name.
+
+
+2. To inject an env var:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mycontainer
+  labels:
+    type: app
+spec:
+  containers:
+    - name: mycontainer
+      image: mycontainer
+      envFrom:
+        - secretRef:
+            name: app-config
+```
+
+
+We can also specify a single key from config map:
+
+```
+spec:
+  containers:
+    - name: mycontainer
+      image: mycontainer
+      env:
+        - name: APP_COLOR
+          valueFrom:
+            secretKeyRef:
+              name: app-secret
+              key: DB_Host
+```
+
+Or we can import this as a volume:
+
+```
+volumes:
+- name: app-secret-volume
+  secret:
+    name: app-secret
+```
